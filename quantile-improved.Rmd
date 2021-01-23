@@ -1,0 +1,243 @@
+---
+title: "quantile-improved"
+author: "Sebastian Fischer"
+date: "11/02/2020"
+output: pdf_document
+header-includes:
+  - \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+---
+
+The line references are referring to this version: 
+
+https://github.com/wch/r-source/blob/5a156a0865362bb8381dcd69ac335f5174a4f60c/src/library/stats/R/quantile.R#L24
+
+## criticism:
+- not enough subfunctions. Therefore the code becomes quite hard to read. Using more
+subfunctions also modularizes the code and makes it easier to modify
+
+Solution: Modularize the code, i.e. split it up into the various subtasks.
+
+- Keep it simple: 
+  - the main issue is the high cyclomatic complexity: especially stacked 
+  if/switch statements are hard to read (e.g. lines 50 - 102 and 29 - 35)
+  - sometimes too much is done in one line: e.g. line 41: why 
+  not assign p.ok <- !is.na(probs) in the line before, 
+  - Line 57: x[hi] != qs implies index > lo 
+
+Solution: don't overload single lines, avoid high cyclomatic complexity
+also by creating more subfunctions and restructuring the code 
+
+- defensive programming: 
+  - no explicit input checks are done 
+  - no tailored warning messages
+  - no warning messages if inputs are implicitely transformed by the functions
+  that are called within quantile.default
+  
+Solution: Check inputs explicitely and give tailored warning messages
+
+To illustrate the consequences of no input checking:
+
+- if the type is negative, the function behaves quite unexpected:
+  Because then it holds that type <= 3 in (line 63) 
+  but afterwards h is assigned NULL (line 68ff) and at line 91 the quantiles 
+  are updated but nothing is done in the following lines because h is NULL...
+
+In addition to that there are simply some inconsitencies and errors/ bugs:
+
+- probabilities that are in (0 - eps, 0) or (1, 1 + eps) are not corrected
+  if probs does not contain any NAs (line 44 - 48). 
+  
+- rounding errors are only adressed for the continuous quantiles: why?
+
+- bug when names == FALSE and probs contains an NA
+  (arises due to 'names(o.pr)[p.ok] <- names(qs)')
+  
+- whether or not character/ Date inputs for x work for types that are not 1 or 3 
+depends on the exact probs and x. Solution: only allow types 1 and 3 as 
+is done for ordered factors 
+
+- some more comments: e.g. line 91 would be much easier to understand with a
+precise comment, line 98: explain why one needs the if(any(other))
+
+Another major issue, that makes the code hard to read are the terrible names:
+
+  - notation is inconsistent with the help page
+  - abbreviations (e.g. nppm, i, sml ...) make it hard to know what the variable
+  contains
+  - points are used in names which is reserved for S3/S4 (e.g. o.pr, na.p, p.ok)
+  - name 'other' (line 91) other is not really informative about what this
+  variable means 
+  - index (line 52): indices are usually whole numbers but not in this case 
+  
+
+
+Summary of improvements:
+
+- write more subfunctions/ modularize the code into the various subtasks. 
+- simplify  the structure, specifically remove the nested if-conditionals   
+- Adhere to the styleguide and improve variable names 
+- Write explicit checks and exclude inputs that don't make sense
+- remove bugs and some major inconsistencies
+
+# Pseudocode
+
+The quantile_tidy function is decomposed into three main components
+
+1. The input checking: check_inputs
+  - This function checks and modifies the inputs, as well as creates variables
+  that are needed later
+
+2. The actual quantile function: quantile_main
+  - This function calculates the actual quantiles according to the type
+  - It presupposes correct input that was already transformed by check_inputs
+
+3. The formatting/ modifcation of outputs: modify_quantiles
+  - formats the output depending on the value of names and whether the
+  input was a factor 
+  
+  
+Only the middle part is descriped mathematically, the other parts will only be 
+sketched informally. 
+
+
+## 1. check_inputs
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{check inputs}
+\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+\Input{$\textbf{x, probs, na.rm, names, type}$}
+\Output{$\textbf{x, probs, na.rm, names, type, probs\_original, probs\_NA, x\_levels}$}
+\BlankLine
+
+Check that $\textbf{type}$ is an almost an integer in 1...9 and if yes round
+to that integer
+
+Check that $\textbf{names}$ can be reasonably be interpreted as logical and 
+extract the first element in case length > 1
+
+Check that $\textbf{na.rm}$ can be reasonably be interpreted as logical and 
+extract the first element in case length > 1
+
+Check that $\textbf{probs}$ contains only values within
+$[0 - \epsilon,1 + \epsilon]$ and round values
+in $[-\epsilon, 0)$ to $0$ and values in $[1, 1 + \epsilon]$ to $1$
+
+Remove NA values from $\textbf{probs}$ and store the original $\textbf{probs}$ vector
+in $\textbf{probs\_original}$ as well as a vector $\textbf{probs\_NA}$ that indicates
+which values in the original \textbf{probs} vector were NA
+
+Check that $\textbf{x}$ is of type numeric, complex, logical, character, date,
+ordered factor or NULL
+
+Remove NAs from $\textbf{x}$ if $\textbf{na.rm}$ is TRUE, otherwise stop if
+NAs are contained
+
+Safe the levels of $\textbf{x}$ in $\textbf{x\_levels}$
+
+\Return{$list(\textbf{x, probs, na.rm, names, type, probs\_original, probs\_NA, x\_levels})$}
+\caption{check and modify inputs for the quantile function and create relevant
+variables}
+\end{algorithm}
+
+
+## 2. quantile_main
+
+quantile_main only calls quantile_type_7 in case type is 7 and quantile_general
+otherwise. Both algorithms are described:
+
+# quantile_type_7 
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{quantiles according to type 7}
+\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+\Input{$p = (p_1, ..., p_m), \quad x = (x_1, ..., x_n)$}
+\Output{$q = (q_1, ..., q_m)$}
+\BlankLine
+$k \leftarrow 1 + (n - 1) \times p$
+
+$k^{(f)} \leftarrow \lfloor k \rfloor$
+
+$k^{(c)} \leftarrow \lceil k \rceil$
+
+$l \leftarrow \text{unique}(k^{(f)}_1, ...k^{(f)}_n, k^{(c)}_1, ..., k^{(c)}_n)$
+
+$x \leftarrow \text{partial\_sort}(x, \text{partial} = l)$
+
+$w \leftarrow x_{k} - x_{k^{(f)}}$
+
+
+$q \leftarrow (1 - w) \times x_{k^{(f)}} + w \times x_{k^{(c)}}$
+
+\Return{q}
+
+\caption{algorithm for quantile type 7}
+\end{algorithm}
+
+
+## quantile_general
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{quantile for types 1 to 9}
+\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+\Input{$p = (p_1, ..., p_m), \quad x = (x_1, ..., x_n)$}
+\Output{$q = (q_1, ..., q_m)$}
+
+$a \leftarrow \text{get\_a(type)}$
+
+$b \leftarrow \text{get\_b(type)}$
+
+$k \leftarrow a + p \times (n + 1 - a - b)$
+
+$k^{(f)} = \lfloor k \rfloor$
+
+$k^{(c)} \leftarrow k^{(f)} + 1$
+
+$l \leftarrow \text{unique}((1,x_{k^{(f)}}, x_{k^{(c)}},n))$
+
+$x \leftarrow \text{partial\_sort}(x, \text{partial} = l)$
+
+$w \leftarrow \text{get\_weights}(\text{type},k, k^{(f)})$
+
+\For{$i = 1...m$}{
+\If{$k_i < 0$}{$q_i \leftarrow x_1$}
+\ElseIf{$k_i > n - 1$}{$q_i \leftarrow x_n$}
+\Else{$q_i \leftarrow (1-w_i) \times k_i^{(f)} + w_i \times k_i^{(c)}$}
+}
+
+\Return{q}
+\caption{general quantile algorithm}
+\end{algorithm}
+
+### 3. modify_quantiles
+
+
+\begin{algorithm}[H]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwResult{modified quantiles}
+\SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+\Input{$\textbf{probs\_NA, q, names, x\_levels, p}$}
+\Output{$q = (q_1, ..., q_m)$}
+
+Extend $\textbf{q}$ with the NAs in the original $\textbf{probs}$ vector
+
+Assign $\textbf{x\_levels}$ to $\textbf{q}$
+
+\If{$\textbf{names}$ is TRUE}{
+  Assign the corresponding probability values $\textbf{p}$ as the names of $\textbf{q}$
+}
+
+\Return{q}
+\caption{modify quantiles}
+\end{algorithm}
+
+
+
+
+
