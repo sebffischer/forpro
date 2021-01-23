@@ -23,8 +23,12 @@ helper_equivalent <- function(x, probs = p, na.rm = FALSE, names = TRUE,
     quantile_default(x, probs, na.rm, names, type))
 }
 
+## helper_loop
 # this utility function makes it better readable to loop over the rows of
 # dataframes that contain arguments for which we want to test 
+# it simply loops over the rows of aruments and tests whether the results
+# for the argument are correct, according to 'fun' which is always 
+# helper_equivalent. 
 helper_loop <- function(arguments, message = "",
   fun = helper_equivalent) {
   for (i in 1:NROW(arguments)) {

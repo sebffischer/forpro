@@ -22,7 +22,7 @@ Solution: Modularize the code, i.e. split it up into the various subtasks.
   if/switch statements are hard to read (e.g. lines 50 - 102 and 29 - 35)
   - sometimes too much is done in one line: e.g. line 41: why 
   not assign p.ok <- !is.na(probs) in the line before, 
-  - Line 57: x[hi] != qs implies index > lo 
+  - Line 57: x[hi] != qs already implies index > lo 
 
 Solution: don't overload single lines, avoid high cyclomatic complexity
 also by creating more subfunctions and restructuring the code 
@@ -147,7 +147,7 @@ variables}
 quantile_main only calls quantile_type_7 in case type is 7 and quantile_general
 otherwise. Both algorithms are described:
 
-# quantile_type_7 
+### quantile_type_7 
 
 \begin{algorithm}[H]
 \DontPrintSemicolon
@@ -214,7 +214,7 @@ $w \leftarrow \text{get\_weights}(\text{type},k, k^{(f)})$
 \caption{general quantile algorithm}
 \end{algorithm}
 
-### 3. modify_quantiles
+## 3. modify_quantiles
 
 
 \begin{algorithm}[H]

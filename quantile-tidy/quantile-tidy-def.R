@@ -145,7 +145,7 @@ get_weights_discrete <- function(probs, positions, type) {
 get_weights_continuous <- function(probs, positions, type) {
   weights <- positions[["exact"]] - positions[["lower"]]
   # set those weights that are almost 0 to 0 
-  eps <- 4 * .Machine$[["double.eps"]]
+  eps <- 4 * .Machine[["double.eps"]]
   almost_zero <- abs(weights) < eps
   weights[almost_zero] <- 0
   
