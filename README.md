@@ -1,6 +1,6 @@
 # forpro
 
-Final project of my first real programming class called "Fortgeschrittene Programmierung".
+Final project for my advanced R class. 
 
 It containted two tasks:
 
